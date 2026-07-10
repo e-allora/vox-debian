@@ -1,0 +1,22 @@
+Source: vox
+Section: sound
+Priority: optional
+Maintainer: vox-debian <vox@example.com>
+Build-Depends: debhelper-compat (= 13), python3, dh-python
+Standards-Version: 4.7.0
+Homepage: https://github.com/e-allora/vox-debian
+
+Package: vox
+Architecture: all
+Depends: ${misc:Depends}, python3, speech-dispatcher
+Recommends: python3-pymupdf, python3-ebooklib
+Suggests: python3-mistune, python3-yaml
+Description: CLI TTS reader using Piper neural text-to-speech
+ Vox reads text, markdown, PDF, and EPUB files aloud using
+ the Piper neural TTS engine via Speech Dispatcher.
+ .
+ Features:
+  - Support for .txt, .md, .pdf, .epub files
+  - Interactive controls: pause, resume, seek, quit
+  - Voice and rate customization
+  - Works on headless systems

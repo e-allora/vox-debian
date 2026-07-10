@@ -1,0 +1,51 @@
+# vox — CLI TTS Reader for Debian
+
+CLI text-to-speech reader using Piper neural TTS via Speech Dispatcher.
+Built with the `debian-development-suite` framework.
+
+## Quick Start
+
+```bash
+# Install
+pip install .
+
+# Read a file aloud
+vox speak document.txt
+
+# Show metadata
+vox info book.epub
+
+# Custom voice and rate
+vox speak --voice en_US-male1 --rate 1.5 document.pdf
+
+# List available Piper voices
+vox list-voices
+```
+
+## Supported Formats
+| Format | Parser | Dependency |
+|--------|--------|------------|
+| `.txt` | Built-in | None |
+| `.md` | mistune (fallback: plain text) | `python3-mistune` |
+| `.pdf` | PyMuPDF | `python3-pymupdf` |
+| `.epub` | ebooklib | `python3-ebooklib` |
+
+## Interactive Controls
+| Key | Action |
+|-----|--------|
+| Space | Pause / Resume |
+| ← → | Seek backward / forward by paragraph |
+| q | Quit |
+
+## Build from Source
+```bash
+dpkg-buildpackage -us -uc
+sudo apt install ../vox_1.0.0_all.deb
+```
+
+## Framework
+Built with the Debian Development Suite:
+https://github.com/e-allora/debian-development-suite
+
+Pipeline: Orchestrator → Product → Architecture → UX/CLI → Development →
+Review → QA → Build → Release → Maintenance

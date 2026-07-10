@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "vox"
+version = "1.0.0"
+description = "CLI TTS reader using Piper neural TTS"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+
+[project.scripts]
+vox = "vox.cli:main"
+
+[project.optional-dependencies]
+pdf = ["pymupdf"]
+epub = ["ebooklib"]
+markdown = ["mistune"]
+all = ["pymupdf", "ebooklib", "mistune", "pyyaml"]

@@ -1,0 +1,8 @@
+vox (1.0.0) unstable; urgency=medium
+
+  * Initial release
+  * Support for text, markdown, PDF, and EPUB input
+  * Piper TTS via Speech Dispatcher
+  * Interactive playback controls
+
+ -- vox-debian <vox@example.com>  Thu, 10 Jul 2026 00:00:00 +0000
