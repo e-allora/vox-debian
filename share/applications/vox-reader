@@ -1,0 +1,342 @@
+"""vox reader — native desktop reader with Piper TTS."""
+
+import sys
+import os
+import subprocess
+import threading
+from urllib.parse import urlparse, unquote
+
+from PyQt6.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QSplitter,
+    QTextBrowser,
+    QToolBar,
+    QPushButton,
+    QLabel,
+    QProgressBar,
+    QListWidget,
+    QListWidgetItem,
+    QVBoxLayout,
+    QWidget,
+    QFileDialog,
+    QMessageBox,
+)
+from PyQt6.QtCore import Qt, QUrl, pyqtSignal, QObject
+from PyQt6.QtGui import QAction, QKeySequence, QFont
+
+
+class Speaker(QObject):
+    """Piper TTS speaker running in a background thread."""
+    position_changed = pyqtSignal(int)  # current paragraph index
+    finished = pyqtSignal()
+
+    def __init__(self, paragraphs: list):
+        super().__init__()
+        self.paragraphs = paragraphs
+        self.idx = 0
+        self.paused = False
+        self.stopped = False
+        self._thread = None
+
+    def start(self, start_idx: int = 0):
+        self.idx = start_idx
+        self.stopped = False
+        self.paused = False
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self):
+        while self.idx < len(self.paragraphs):
+            if self.stopped:
+                break
+            if self.paused:
+                import time
+                time.sleep(0.1)
+                continue
+            self.position_changed.emit(self.idx)
+            subprocess.run(
+                ["spd-say", "-o", "piper", "-w", "--", self.paragraphs[self.idx]],
+                timeout=60,
+            )
+            self.idx += 1
+        self.position_changed.emit(min(self.idx, len(self.paragraphs) - 1))
+        self.finished.emit()
+
+    def pause_resume(self):
+        self.paused = not self.paused
+
+    def next(self):
+        self.idx = min(self.idx + 1, len(self.paragraphs) - 1)
+        self.paused = True
+        self.stopped = True
+
+    def prev(self):
+        self.idx = max(self.idx - 1, 0)
+        self.paused = True
+        self.stopped = True
+
+    def stop(self):
+        self.stopped = True
+
+
+class VoxReader(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Vox Reader")
+        self.resize(1000, 700)
+        self.speaker = None
+        self.paragraphs = []
+        self.meta = {}
+        self._current_idx = -1
+
+        # Central widget
+        central = QWidget()
+        self.setCentralWidget(central)
+        layout = QVBoxLayout(central)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # Toolbar
+        toolbar = QToolBar()
+        self.addToolBar(toolbar)
+
+        open_action = QAction("📂 Open", self)
+        open_action.setShortcut(QKeySequence.StandardKey.Open)
+        open_action.triggered.connect(self.open_file)
+        toolbar.addAction(open_action)
+
+        toolbar.addSeparator()
+
+        self.play_btn = QPushButton("▶ Play")
+        self.play_btn.clicked.connect(self.toggle_play)
+        self.play_btn.setEnabled(False)
+        toolbar.addWidget(self.play_btn)
+
+        self.prev_btn = QPushButton("⏮")
+        self.prev_btn.clicked.connect(self.prev_paragraph)
+        self.prev_btn.setEnabled(False)
+        toolbar.addWidget(self.prev_btn)
+
+        self.next_btn = QPushButton("⏭")
+        self.next_btn.clicked.connect(self.next_paragraph)
+        self.next_btn.setEnabled(False)
+        toolbar.addWidget(self.next_btn)
+
+        toolbar.addSeparator()
+
+        self.progress = QProgressBar()
+        self.progress.setMaximum(100)
+        self.progress.setFixedWidth(200)
+        self.progress.setVisible(False)
+        toolbar.addWidget(self.progress)
+
+        self.status_label = QLabel("")
+        toolbar.addWidget(self.status_label)
+
+        # Splitter: TOC + Content
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        layout.addWidget(splitter)
+
+        # TOC panel
+        self.toc_list = QListWidget()
+        self.toc_list.setMaximumWidth(220)
+        self.toc_list.itemClicked.connect(self.toc_clicked)
+        self.toc_list.setVisible(False)
+        splitter.addWidget(self.toc_list)
+
+        # Content area
+        self.content = QTextBrowser()
+        self.content.setOpenExternalLinks(False)
+        font = QFont("Georgia, serif", 14)
+        self.content.setFont(font)
+        self.content.setStyleSheet("""
+            QTextBrowser {
+                background-color: #faf8f5;
+                color: #2c2c2c;
+                padding: 40px 60px;
+                border: none;
+                selection-background-color: #d4e6f1;
+            }
+        """)
+        splitter.addWidget(self.content)
+
+        splitter.setSizes([0, 1000])
+
+        self.show()
+
+    def open_file(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Document",
+            "",
+            "Documents (*.txt *.md *.pdf *.epub);;All Files (*)",
+        )
+        if not path:
+            return
+        self.load_document(path)
+
+    def load_document(self, path: str):
+        from vox.reader import Reader
+        try:
+            r = Reader(path)
+            self.paragraphs = r.paragraphs()
+            self.meta = r.metadata()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+            return
+
+        # Render as HTML
+        title = self.meta.get("title") or os.path.basename(path)
+        author = self.meta.get("author") or ""
+
+        html_parts = [
+            f'<h1 style="text-align:center; margin-bottom:5px">{title}</h1>',
+        ]
+        if author and author != "Unknown":
+            html_parts.append(
+                f'<p style="text-align:center; color:#888; margin-bottom:30px">{author}</p>'
+            )
+        html_parts.append('<hr style="margin-bottom:30px">')
+
+        for i, para in enumerate(self.paragraphs):
+            html_parts.append(
+                f'<p id="p{i}" style="line-height:1.8; margin-bottom:16px">{para}</p>'
+            )
+
+        self.content.setHtml("\n".join(html_parts))
+        self.setWindowTitle(f"Vox Reader — {title}")
+
+        # Update TOC
+        self.toc_list.clear()
+        for i, para in enumerate(self.paragraphs):
+            preview = para[:60] + "…" if len(para) > 60 else para
+            item = QListWidgetItem(preview)
+            item.setData(Qt.ItemDataRole.UserRole, i)
+            self.toc_list.addItem(item)
+        self.toc_list.setVisible(True)
+
+        # Enable controls
+        self.play_btn.setEnabled(True)
+        self.prev_btn.setEnabled(True)
+        self.next_btn.setEnabled(True)
+        self.progress.setVisible(True)
+        self.progress.setMaximum(len(self.paragraphs))
+        self.progress.setValue(0)
+        self._current_idx = -1
+
+        # Start playback
+        if self.speaker:
+            self.speaker.stop()
+        self.speaker = Speaker(self.paragraphs)
+        self.speaker.position_changed.connect(self.on_position_changed)
+        self.speaker.finished.connect(self.on_finished)
+        self.speaker.start(0)
+        self.play_btn.setText("⏸ Pause")
+
+    def on_position_changed(self, idx: int):
+        self._current_idx = idx
+        self.progress.setValue(idx + 1)
+        self.status_label.setText(f"Paragraph {idx + 1}/{len(self.paragraphs)}")
+
+        # Highlight current paragraph
+        script = f"""
+        for (let i = 0; i < {len(self.paragraphs)}; i++) {{
+            let el = document.getElementById('p' + i);
+            if (el) el.style.backgroundColor = '';
+        }}
+        let el = document.getElementById('p{idx}');
+        if (el) {{
+            el.style.backgroundColor = '#d4e6f1';
+            el.scrollIntoView({{behavior: 'smooth', block: 'center'}});
+        }}
+        """
+        self.content.page().runJavaScript(script)
+
+        # Highlight TOC
+        for i in range(self.toc_list.count()):
+            item = self.toc_list.item(i)
+            font = item.font()
+            font.setBold(i == idx)
+            item.setFont(font)
+
+    def on_finished(self):
+        self.play_btn.setText("▶ Play")
+        self.status_label.setText("Finished")
+        self.progress.setValue(len(self.paragraphs))
+
+    def toggle_play(self):
+        if not self.speaker:
+            return
+        if self.speaker.paused:
+            self.speaker.pause_resume()
+            self.play_btn.setText("⏸ Pause")
+        elif not self.speaker.stopped:
+            self.speaker.pause_resume()
+            self.play_btn.setText("▶ Play")
+        else:
+            self.speaker = Speaker(self.paragraphs)
+            self.speaker.position_changed.connect(self.on_position_changed)
+            self.speaker.finished.connect(self.on_finished)
+            self.speaker.start(self._current_idx + 1 if self._current_idx >= 0 else 0)
+            self.play_btn.setText("⏸ Pause")
+
+    def next_paragraph(self):
+        if self.speaker:
+            self.speaker.next()
+            self.speaker = Speaker(self.paragraphs)
+            self.speaker.position_changed.connect(self.on_position_changed)
+            self.speaker.finished.connect(self.on_finished)
+            new_idx = min(self._current_idx + 1, len(self.paragraphs) - 1)
+            self.speaker.start(new_idx)
+            self.play_btn.setText("⏸ Pause")
+
+    def prev_paragraph(self):
+        if self.speaker:
+            self.speaker.stop()
+            self.speaker = Speaker(self.paragraphs)
+            self.speaker.position_changed.connect(self.on_position_changed)
+            self.speaker.finished.connect(self.on_finished)
+            new_idx = max(self._current_idx - 1, 0)
+            self.speaker.start(new_idx)
+            self.play_btn.setText("⏸ Pause")
+
+    def toc_clicked(self, item):
+        idx = item.data(Qt.ItemDataRole.UserRole)
+        if self.speaker:
+            self.speaker.stop()
+        self.speaker = Speaker(self.paragraphs)
+        self.speaker.position_changed.connect(self.on_position_changed)
+        self.speaker.finished.connect(self.on_finished)
+        self.speaker.start(idx)
+        self.play_btn.setText("⏸ Pause")
+
+    def closeEvent(self, event):
+        if self.speaker:
+            self.speaker.stop()
+        event.accept()
+
+
+def uri_to_path(uri: str) -> str:
+    if uri.startswith("file://"):
+        return unquote(urlparse(uri).path)
+    return uri
+
+
+def main():
+    app = QApplication(sys.argv)
+    app.setApplicationName("Vox Reader")
+
+    reader = VoxReader()
+
+    # Auto-open file if passed as argument
+    if len(sys.argv) > 1:
+        path = uri_to_path(sys.argv[1])
+        if os.path.exists(path):
+            reader.load_document(path)
+
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()
