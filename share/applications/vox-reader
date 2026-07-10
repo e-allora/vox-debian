@@ -239,25 +239,38 @@ class VoxReader(QMainWindow):
         self.progress.setValue(idx + 1)
         self.status_label.setText(f"Paragraph {idx + 1}/{len(self.paragraphs)}")
 
-        # Highlight current paragraph
-        script = f"""
-        for (let i = 0; i < {len(self.paragraphs)}; i++) {{
-            let el = document.getElementById('p' + i);
-            if (el) el.style.backgroundColor = '';
-        }}
-        let el = document.getElementById('p{idx}');
-        if (el) {{
-            el.style.backgroundColor = '#d4e6f1';
-            el.scrollIntoView({{behavior: 'smooth', block: 'center'}});
-        }}
-        """
-        self.content.page().runJavaScript(script)
+        # Scroll to and highlight current paragraph via anchor
+        anchor = f"p{idx}"
+        self.content.scrollToAnchor(anchor)
+        # Re-apply the text to refresh highlights (QTextBrowser limitation)
+        self._rehighlight(idx)
+
+    def _rehighlight(self, active_idx: int):
+        """Rebuild HTML with the active paragraph highlighted."""
+        title = self.meta.get("title") or ""
+        author = self.meta.get("author") or ""
+        
+        parts = [f'<h1 style="text-align:center; margin-bottom:5px">{title}</h1>']
+        if author and author != "Unknown":
+            parts.append(f'<p style="text-align:center; color:#888; margin-bottom:30px">{author}</p>')
+        parts.append('<hr style="margin-bottom:30px">')
+
+        for i, para in enumerate(self.paragraphs):
+            if i == active_idx:
+                parts.append(
+                    f'<p id="p{i}" style="line-height:1.8; margin-bottom:16px; '
+                    f'background-color:#d4e6f1; padding:8px; border-radius:4px">{para}</p>'
+                )
+            else:
+                parts.append(f'<p id="p{i}" style="line-height:1.8; margin-bottom:16px">{para}</p>')
+
+        self.content.setHtml("\n".join(parts))
 
         # Highlight TOC
         for i in range(self.toc_list.count()):
             item = self.toc_list.item(i)
             font = item.font()
-            font.setBold(i == idx)
+            font.setBold(i == active_idx)
             item.setFont(font)
 
     def on_finished(self):
