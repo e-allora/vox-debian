@@ -9,12 +9,9 @@ def parse_markdown(path: str) -> Tuple[List[str], Dict]:
 
     try:
         import mistune
-        import re
 
-        # mistune 3.x: render to HTML then strip tags for plain text
-        md = mistune.create_markdown(escape=False)
-        html = md(content)
-        text = re.sub(r"<[^>]+>", "", html)
+        md = mistune.create_markdown(renderer=None)
+        text = mistune.html_to_text(md(content))
     except ImportError:
         text = content
 
