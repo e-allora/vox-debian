@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Vox TTS Reader
+Comment=Read documents aloud with Piper neural TTS
+Exec=vox
+Terminal=true
+Type=Application
+Categories=Audio;Utility;
+Keywords=tts;speech;reader;piper;text-to-speech;
