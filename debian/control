@@ -2,7 +2,7 @@ Source: vox
 Section: sound
 Priority: optional
 Maintainer: vox-debian <vox@example.com>
-Build-Depends: debhelper-compat (= 13), python3, dh-python
+Build-Depends: debhelper-compat (= 13), python3, dh-python, pybuild-plugin-pyproject
 Standards-Version: 4.7.0
 Homepage: https://github.com/e-allora/vox-debian
 

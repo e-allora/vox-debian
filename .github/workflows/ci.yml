@@ -19,6 +19,6 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -e ".[all]"
-      - run: sudo apt-get install -y build-essential devscripts debhelper dh-python lintian
+      - run: sudo apt-get install -y build-essential devscripts debhelper dh-python lintian pybuild-plugin-pyproject
       - run: dpkg-buildpackage -us -uc
       - run: lintian ../*.deb || true
