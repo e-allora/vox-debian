@@ -39,10 +39,31 @@ def parse_epub(path: str) -> Tuple[List[str], Dict]:
     author = book.get_metadata("DC", "creator")
 
     full_text = []
-    for item in book.get_items_of_type(9):
+
+    # Walk spine items in order (handles both type 0 text/html and type 9 xhtml)
+    for item_id, _linear in book.spine:
+        item = book.get_item_with_id(item_id)
+        if item is None:
+            continue
+        try:
+            content = item.get_content().decode("utf-8", errors="replace")
+        except Exception:
+            continue
         extractor = _TextExtractor()
-        extractor.feed(item.get_content().decode("utf-8", errors="replace"))
+        extractor.feed(content)
         full_text.append("".join(extractor.text))
+
+    # Fallback: if spine produced nothing, try all documents
+    if not any(t.strip() for t in full_text):
+        for item in book.get_items():
+            if item.get_type() in (0, 9):  # text/html or application/xhtml+xml
+                try:
+                    content = item.get_content().decode("utf-8", errors="replace")
+                except Exception:
+                    continue
+                extractor = _TextExtractor()
+                extractor.feed(content)
+                full_text.append("".join(extractor.text))
 
     text = "\n".join(full_text)
     paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
