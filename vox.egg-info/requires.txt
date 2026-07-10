@@ -1,0 +1,15 @@
+
+[all]
+pymupdf
+ebooklib
+mistune
+pyyaml
+
+[epub]
+ebooklib
+
+[markdown]
+mistune
+
+[pdf]
+pymupdf

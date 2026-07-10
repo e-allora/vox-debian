@@ -1,0 +1,2 @@
+[console_scripts]
+vox = vox.cli:main
