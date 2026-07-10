@@ -1,0 +1,27 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -e ".[all]" pytest pyyaml
+      - run: python3 -m pytest tests/ -v
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get install -y shellcheck
+      - run: shellcheck debian/rules
+      - run: python3 -m py_compile vox/*.py vox/parsers/*.py
+  package:
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get install -y devscripts debhelper dh-python lintian
+      - run: dpkg-buildpackage -us -uc
+      - run: lintian ../*.deb || true
